@@ -12,7 +12,7 @@ solve it locally inside an app.
 
 - pnpm workspaces, TypeScript strict mode
 - Next.js 15 (App Router), React Server Components by default
-- Postgres 16 + Drizzle ORM
+- Postgres 14 + Drizzle ORM
 - Tailwind + shadcn/ui
 - Vitest
 

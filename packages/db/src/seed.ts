@@ -1,0 +1,220 @@
+import type { Database } from './client';
+import { approvalRequests, auditLog, customers, users } from './schema';
+
+// Everything here is synthetic and obviously fake: SSNs in the 000-00-XXXX range,
+// emails at @example.test. Never add realistic PII, even fictional.
+
+const SYSTEM_ACTOR = { id: 'system', email: 'seed@example.test' };
+
+export const SEED_USERS: (typeof users.$inferInsert)[] = [
+  {
+    id: 'usr_ana',
+    email: 'ana.analyst@example.test',
+    name: 'Ana Analyst',
+    roles: ['template_analyst'],
+  },
+  {
+    id: 'usr_chris',
+    email: 'chris.checker@example.test',
+    name: 'Chris Checker',
+    roles: ['template_approver'],
+  },
+  { id: 'usr_kim', email: 'kim.kyc@example.test', name: 'Kim Kyc', roles: ['kyc_analyst'] },
+  {
+    id: 'usr_kai',
+    email: 'kai.approver@example.test',
+    name: 'Kai Approver',
+    roles: ['kyc_approver'],
+  },
+  {
+    id: 'usr_fern',
+    email: 'fern.flags@example.test',
+    name: 'Fern Flags',
+    roles: ['flags_engineer'],
+  },
+  { id: 'usr_adi', email: 'adi.admin@example.test', name: 'Adi Admin', roles: ['flags_admin'] },
+  {
+    id: 'usr_audrey',
+    email: 'audrey.auditor@example.test',
+    name: 'Audrey Auditor',
+    roles: ['auditor'],
+  },
+  { id: 'usr_norm', email: 'norm.norole@example.test', name: 'Norm Norole', roles: [] },
+];
+
+function customerId(n: number): string {
+  return `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+}
+
+export const SEED_CUSTOMERS: (typeof customers.$inferInsert)[] = [
+  {
+    id: customerId(1),
+    fullName: 'Test Customer One',
+    email: 'customer1@example.test',
+    ssn: '000-00-0001',
+    status: 'active',
+    riskTier: 'low',
+    balanceCents: 125_000,
+  },
+  {
+    id: customerId(2),
+    fullName: 'Test Customer Two',
+    email: 'customer2@example.test',
+    ssn: '000-00-0002',
+    status: 'active',
+    riskTier: 'medium',
+    balanceCents: 8_250,
+  },
+  {
+    id: customerId(3),
+    fullName: 'Test Customer Three',
+    email: 'customer3@example.test',
+    ssn: '000-00-0003',
+    status: 'active',
+    riskTier: 'high',
+    balanceCents: 4_000_000,
+  },
+  {
+    id: customerId(4),
+    fullName: 'Test Customer Four',
+    email: 'customer4@example.test',
+    ssn: '000-00-0004',
+    status: 'suspended',
+    riskTier: 'high',
+    balanceCents: 0,
+  },
+  {
+    id: customerId(5),
+    fullName: 'Test Customer Five',
+    email: 'customer5@example.test',
+    ssn: '000-00-0005',
+    status: 'suspended',
+    riskTier: 'medium',
+    balanceCents: 99_999,
+  },
+  {
+    id: customerId(6),
+    fullName: 'Test Customer Six',
+    email: 'customer6@example.test',
+    ssn: '000-00-0006',
+    status: 'closed',
+    riskTier: 'low',
+    balanceCents: 0,
+  },
+  {
+    id: customerId(7),
+    fullName: 'Test Customer Seven',
+    email: 'customer7@example.test',
+    ssn: '000-00-0007',
+    status: 'closed',
+    riskTier: 'high',
+    balanceCents: 0,
+  },
+  {
+    id: customerId(8),
+    fullName: 'Test Customer Eight',
+    email: 'customer8@example.test',
+    ssn: '000-00-0008',
+    status: 'active',
+    riskTier: 'low',
+    balanceCents: 1_500,
+  },
+  {
+    id: customerId(9),
+    fullName: 'Test Customer Nine',
+    email: 'customer9@example.test',
+    ssn: '000-00-0009',
+    status: 'active',
+    riskTier: 'low',
+    balanceCents: 250_000,
+  },
+  {
+    id: customerId(10),
+    fullName: 'Test Customer Ten',
+    email: 'customer10@example.test',
+    ssn: '000-00-0010',
+    status: 'active',
+    riskTier: 'medium',
+    balanceCents: 61_040,
+  },
+  {
+    id: customerId(11),
+    fullName: 'Test Customer Eleven',
+    email: 'customer11@example.test',
+    ssn: '000-00-0011',
+    status: 'active',
+    riskTier: 'high',
+    balanceCents: 1_200_000,
+  },
+  {
+    id: customerId(12),
+    fullName: 'Test Customer Twelve',
+    email: 'customer12@example.test',
+    ssn: '000-00-0012',
+    status: 'active',
+    riskTier: 'low',
+    balanceCents: 300,
+  },
+];
+
+/** A pending maker-checker request so a reviewer can exercise approval right away. */
+const SEED_APPROVAL: typeof approvalRequests.$inferInsert = {
+  id: '00000000-0000-4000-9000-000000000001',
+  resourceType: 'customer',
+  resourceId: customerId(3),
+  action: 'suspend',
+  makerId: 'usr_ana',
+  makerEmail: 'ana.analyst@example.test',
+  status: 'pending',
+};
+
+/** Idempotent: rows that already exist are left alone. */
+export async function seed(db: Database): Promise<{ users: number; customers: number }> {
+  return db.transaction(async (tx) => {
+    const insertedUsers = await tx
+      .insert(users)
+      .values(SEED_USERS)
+      .onConflictDoNothing()
+      .returning();
+
+    const insertedCustomers = await tx
+      .insert(customers)
+      .values(SEED_CUSTOMERS)
+      .onConflictDoNothing()
+      .returning();
+
+    if (insertedCustomers.length > 0) {
+      await tx.insert(auditLog).values(
+        insertedCustomers.map((row) => ({
+          actorId: SYSTEM_ACTOR.id,
+          actorEmail: SYSTEM_ACTOR.email,
+          action: 'customer.seeded',
+          resourceType: 'customer',
+          resourceId: row.id,
+          before: null,
+          after: row,
+        })),
+      );
+    }
+
+    const insertedApprovals = await tx
+      .insert(approvalRequests)
+      .values(SEED_APPROVAL)
+      .onConflictDoNothing()
+      .returning();
+
+    if (insertedApprovals.length > 0) {
+      await tx.insert(auditLog).values({
+        actorId: SEED_APPROVAL.makerId,
+        actorEmail: SEED_APPROVAL.makerEmail,
+        action: 'customer.suspend.propose',
+        resourceType: 'customer',
+        resourceId: SEED_APPROVAL.resourceId,
+        before: null,
+        after: { approvalRequestId: SEED_APPROVAL.id },
+      });
+    }
+
+    return { users: insertedUsers.length, customers: insertedCustomers.length };
+  });
+}

@@ -1,0 +1,26 @@
+{
+  "name": "internal-tools-platform",
+  "private": true,
+  "packageManager": "pnpm@12.4.1",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter template dev",
+    "build": "pnpm --filter template build",
+    "typecheck": "pnpm -r --workspace-concurrency=1 typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "test": "vitest run",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test",
+    "db:generate": "pnpm --filter @platform/db db:generate",
+    "db:migrate": "pnpm --filter @platform/db db:migrate",
+    "db:seed": "pnpm --filter @platform/db db:seed",
+    "db:reset": "pnpm --filter @platform/db db:reset"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

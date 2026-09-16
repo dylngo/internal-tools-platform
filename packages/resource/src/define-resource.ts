@@ -16,6 +16,7 @@ export interface ResourceAction<Row> {
   label?: string;
   /** Needed to run the action — or, when `requiresApproval`, to approve it. */
   permission: Permission;
+  permissionFor?(row: Row): Permission;
   /**
    * Maker-checker: anyone with the resource's write permission may propose the
    * action; it runs only once a *different* user holding `permission` approves.
@@ -66,6 +67,13 @@ export interface ResourceConfig<TTable extends ResourceTable, TSchema extends An
   permissions: { read: Permission; write: Permission };
   create?: boolean;
   update?: boolean;
+  /** Optional row-level write permission, such as production-only controls. */
+  writePermission?(row: RowOf<TTable>): Permission;
+  /** Adds server-controlled values to generic updates without expanding the form schema. */
+  updateValues?(
+    values: Record<string, unknown>,
+    row: RowOf<TTable>,
+  ): Partial<TTable['$inferInsert']>;
   list: {
     columns: ResourceColumn<RowOf<TTable>>[];
     filters?: ResourceFilter[];

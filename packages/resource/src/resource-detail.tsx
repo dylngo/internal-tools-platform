@@ -102,18 +102,27 @@ export async function ResourceDetail({
             <Link href={resource.basePath} className={buttonClassName('ghost', 'sm')}>
               Back
             </Link>
-            {can(user, resource.permissions.write) && resource.update !== false ? (
+            {can(user, resource.writePermission?.(row) ?? resource.permissions.write) &&
+            resource.update !== false ? (
               <Link
                 href={`${resource.basePath}/${id}/edit`}
                 className={buttonClassName('outline', 'sm')}
               >
                 Edit
               </Link>
+            ) : can(user, resource.permissions.write) && resource.writePermission ? (
+              <span
+                className={buttonClassName('outline', 'sm', 'pointer-events-none opacity-50')}
+                title={`Requires permission ${resource.writePermission(row)}`}
+                aria-disabled
+              >
+                Edit
+              </span>
             ) : null}
             {visibleActions.map((action) => {
               const needed = action.requiresApproval
-                ? resource.permissions.write
-                : action.permission;
+                ? (resource.writePermission?.(row) ?? resource.permissions.write)
+                : (action.permissionFor?.(row) ?? action.permission);
               const allowed = can(user, needed);
               const pending = pendingActionNames.has(action.name);
               const label = action.label ?? humanize(action.name);
@@ -126,9 +135,7 @@ export async function ResourceDetail({
                   input={action.input}
                   disabled={!allowed || pending}
                   disabledReason={
-                    pending
-                      ? 'Already awaiting approval.'
-                      : `Requires permission ${action.permission}.`
+                    pending ? 'Already awaiting approval.' : `Requires permission ${needed}.`
                   }
                 >
                   {action.requiresApproval ? `Propose: ${label}` : label}
@@ -152,6 +159,7 @@ export async function ResourceDetail({
         requests={requests}
         currentUser={user}
         permissionFor={(request) =>
+          resource.actions.find((action) => action.name === request.action)?.permissionFor?.(row) ??
           resource.actions.find((action) => action.name === request.action)?.permission ??
           resource.permissions.write
         }

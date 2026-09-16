@@ -264,6 +264,55 @@ importers:
         specifier: 'catalog:'
         version: 5.9.3
 
+  apps/feature-flags:
+    dependencies:
+      '@platform/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
+      '@platform/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
+      '@platform/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@platform/rbac':
+        specifier: workspace:*
+        version: link:../../packages/rbac
+      '@platform/resource':
+        specifier: workspace:*
+        version: link:../../packages/resource
+      '@platform/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(postgres@3.4.9)
+      next:
+        specifier: 'catalog:'
+        version: 15.5.25(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: 'catalog:'
+        version: 4.5.4
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      tailwindcss:
+        specifier: 'catalog:'
+        version: 3.4.19
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
   apps/kyc-review:
     dependencies:
       '@platform/audit':

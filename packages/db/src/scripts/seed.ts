@@ -5,7 +5,9 @@ export async function runSeed(url: string): Promise<void> {
   const { db, sql } = createDb(url);
   try {
     const inserted = await seed(db);
-    console.log(`seeded ${inserted.users} users, ${inserted.customers} customers`);
+    console.log(
+      `seeded ${inserted.users} users, ${inserted.customers} customers, ${inserted.featureFlags} feature flags`,
+    );
   } finally {
     await sql.end();
   }

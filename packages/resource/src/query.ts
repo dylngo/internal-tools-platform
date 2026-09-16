@@ -17,12 +17,10 @@ export async function findRow<R extends AnyResource>(
   resource: R,
   id: string,
   executor: DbExecutor = db,
+  lock?: 'update',
 ): Promise<RowOf<R['table']> | undefined> {
-  const rows = await executor
-    .select()
-    .from(resource.table)
-    .where(eq(resource.table.id, id))
-    .limit(1);
+  const query = executor.select().from(resource.table).where(eq(resource.table.id, id)).limit(1);
+  const rows = lock ? await query.for(lock) : await query;
   return rows[0] as RowOf<R['table']> | undefined;
 }
 

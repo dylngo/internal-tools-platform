@@ -1,5 +1,13 @@
 import type { Database } from './client';
-import { approvalRequests, auditLog, customers, users } from './schema';
+import {
+  approvalRequests,
+  auditLog,
+  customers,
+  type FLAG_ENVIRONMENTS,
+  type FLAG_STATES,
+  featureFlags,
+  users,
+} from './schema';
 
 // Everything here is synthetic and obviously fake: SSNs in the 000-00-XXXX range,
 // emails at @example.test. Never add realistic PII, even fictional.
@@ -157,6 +165,96 @@ export const SEED_CUSTOMERS: (typeof customers.$inferInsert)[] = [
   },
 ];
 
+const flagId = (n: number): string => `00000000-0000-4000-a000-${String(n).padStart(12, '0')}`;
+
+const SEED_FEATURE_FLAG_VALUES: readonly [
+  string,
+  string,
+  (typeof FLAG_ENVIRONMENTS)[number],
+  (typeof FLAG_STATES)[number],
+  number,
+][] = [
+  [
+    'checkout-redesign',
+    'New checkout experience for the web storefront',
+    'development',
+    'enabled',
+    100,
+  ],
+  ['search-v2', 'Rebuilt search ranking and filtering pipeline', 'development', 'enabled', 75],
+  ['billing-export', 'Download billing records as CSV', 'development', 'disabled', 0],
+  ['team-invites', 'Invite teammates from the workspace settings', 'development', 'enabled', 100],
+  ['dark-mode', 'Optional dark theme for the admin console', 'development', 'enabled', 50],
+  ['bulk-edit', 'Edit multiple records from a single workflow', 'development', 'disabled', 0],
+  [
+    'new-navigation',
+    'Sidebar navigation for the primary application',
+    'development',
+    'enabled',
+    100,
+  ],
+  ['webhooks-v2', 'Second generation webhook delivery service', 'development', 'disabled', 0],
+  ['invoice-reminders', 'Automated reminders for overdue invoices', 'development', 'enabled', 25],
+  ['recommendations', 'Personalized recommendations on the home page', 'staging', 'enabled', 50],
+  ['mobile-dashboard', 'Dashboard layout optimized for mobile screens', 'staging', 'enabled', 100],
+  [
+    'fraud-review-queue',
+    'Queue for manually reviewing suspicious activity',
+    'staging',
+    'enabled',
+    75,
+  ],
+  ['self-serve-returns', 'Customer self-service returns workflow', 'staging', 'disabled', 0],
+  ['usage-alerts', 'Notify workspace owners about usage thresholds', 'staging', 'enabled', 40],
+  ['audit-search', 'Search and filter audit events by actor', 'staging', 'enabled', 100],
+  ['workspace-templates', 'Reusable templates for new workspaces', 'staging', 'disabled', 0],
+  ['sso-enforcement', 'Require single sign-on for selected workspaces', 'staging', 'enabled', 25],
+  ['data-retention-v2', 'Updated retention policy management controls', 'staging', 'disabled', 0],
+  ['smart-routing', 'Route incoming requests using workload signals', 'production', 'enabled', 10],
+  ['payouts-v2', 'Updated payout scheduling and reconciliation flow', 'production', 'disabled', 0],
+  [
+    'tax-document-downloads',
+    'Download annual tax documents from the portal',
+    'production',
+    'enabled',
+    100,
+  ],
+  [
+    'real-time-collaboration',
+    'Live presence and collaborative editing',
+    'production',
+    'enabled',
+    50,
+  ],
+  ['priority-support', 'Expose priority support contact options', 'production', 'disabled', 0],
+  [
+    'account-recovery',
+    'New account recovery flow with additional checks',
+    'production',
+    'enabled',
+    25,
+  ],
+  [
+    'regional-dashboards',
+    'Regional performance dashboards for operators',
+    'production',
+    'disabled',
+    0,
+  ],
+];
+
+export const SEED_FEATURE_FLAGS: (typeof featureFlags.$inferInsert)[] =
+  SEED_FEATURE_FLAG_VALUES.map(
+    ([name, description, environment, state, rolloutPercentage], index) => ({
+      id: flagId(index + 1),
+      name,
+      description,
+      environment,
+      state,
+      rolloutPercentage,
+    }),
+  );
+
 /** A pending maker-checker request so a reviewer can exercise approval right away. */
 const SEED_APPROVAL: typeof approvalRequests.$inferInsert = {
   id: '00000000-0000-4000-9000-000000000001',
@@ -169,7 +267,11 @@ const SEED_APPROVAL: typeof approvalRequests.$inferInsert = {
 };
 
 /** Idempotent: rows that already exist are left alone. */
-export async function seed(db: Database): Promise<{ users: number; customers: number }> {
+export async function seed(db: Database): Promise<{
+  users: number;
+  customers: number;
+  featureFlags: number;
+}> {
   return db.transaction(async (tx) => {
     const insertedUsers = await tx
       .insert(users)
@@ -182,6 +284,26 @@ export async function seed(db: Database): Promise<{ users: number; customers: nu
       .values(SEED_CUSTOMERS)
       .onConflictDoNothing()
       .returning();
+
+    const insertedFeatureFlags = await tx
+      .insert(featureFlags)
+      .values(SEED_FEATURE_FLAGS)
+      .onConflictDoNothing()
+      .returning();
+
+    if (insertedFeatureFlags.length > 0) {
+      await tx.insert(auditLog).values(
+        insertedFeatureFlags.map((row) => ({
+          actorId: SYSTEM_ACTOR.id,
+          actorEmail: SYSTEM_ACTOR.email,
+          action: 'featureFlag.seeded',
+          resourceType: 'featureFlag',
+          resourceId: row.id,
+          before: null,
+          after: row,
+        })),
+      );
+    }
 
     if (insertedCustomers.length > 0) {
       await tx.insert(auditLog).values(
@@ -215,6 +337,10 @@ export async function seed(db: Database): Promise<{ users: number; customers: nu
       });
     }
 
-    return { users: insertedUsers.length, customers: insertedCustomers.length };
+    return {
+      users: insertedUsers.length,
+      customers: insertedCustomers.length,
+      featureFlags: insertedFeatureFlags.length,
+    };
   });
 }

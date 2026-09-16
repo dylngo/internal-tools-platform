@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { withAudit } from '@platform/audit';
 import { getCurrentUser, type User } from '@platform/auth';
-import { type ApprovalRequestRow, approvalRequests, db } from '@platform/db';
+import { type ApprovalRequestRow, approvalRequests, type DbExecutor, db } from '@platform/db';
 import { isForbiddenError, requirePermission } from '@platform/rbac';
 import { type ActionResult, fail, ok, parseFormData, type RevealResult } from '@platform/ui';
 import { and, eq } from 'drizzle-orm';
@@ -42,8 +42,8 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
     return action;
   }
 
-  async function loadRow(id: string): Promise<Row> {
-    const row = await findRow(resource, id);
+  async function loadRow(id: string, executor: DbExecutor = db, lock?: 'update'): Promise<Row> {
+    const row = await findRow(resource, id, executor, lock);
     if (!row) {
       throw new Error(`${resource.label} ${id} not found`);
     }
@@ -79,7 +79,8 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
 
     update: (id, _previous, formData) =>
       guarded(async (actor) => {
-        requirePermission(actor, permissions.write);
+        const before = await loadRow(id);
+        requirePermission(actor, resource.writePermission?.(before) ?? permissions.write);
         const parsed = parseFormData(resource.schema, formData);
         if (!parsed.ok) {
           return fail('Please fix the highlighted fields.', parsed.fieldErrors, parsed.values);
@@ -87,12 +88,12 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
         await withAudit(
           { actor, action: `${name}.update`, resourceType: name, resourceId: id },
           async (tx) => {
-            const before = await loadRow(id);
-            const [after] = await tx
-              .update(table)
-              .set(parsed.data as Partial<typeof table.$inferInsert>)
-              .where(eq(table.id, id))
-              .returning();
+            const before = await loadRow(id, tx, 'update');
+            const values = {
+              ...(parsed.data as Partial<typeof table.$inferInsert>),
+              ...(resource.updateValues?.(parsed.data, before) ?? {}),
+            };
+            const [after] = await tx.update(table).set(values).where(eq(table.id, id)).returning();
             return { before, after, result: undefined };
           },
         );
@@ -103,8 +104,15 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
     run: (actionName, id) =>
       guarded(async (actor) => {
         const action = actionNamed(actionName);
+        const row = await loadRow(id);
+        const actionPermission = action.permissionFor?.(row) ?? action.permission;
         // Maker-checker: anyone who can write may propose; only `action.permission` may approve.
-        requirePermission(actor, action.requiresApproval ? permissions.write : action.permission);
+        requirePermission(
+          actor,
+          action.requiresApproval
+            ? (resource.writePermission?.(row) ?? permissions.write)
+            : actionPermission,
+        );
 
         if (action.requiresApproval) {
           const pending = await db
@@ -145,7 +153,7 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
         await withAudit(
           { actor, action: `${name}.${action.name}`, resourceType: name, resourceId: id },
           async (tx) => {
-            const before = await loadRow(id);
+            const before = await loadRow(id, tx, 'update');
             const after = await action.handler({ tx, row: before, actor });
             return { before, after, result: undefined };
           },
@@ -158,7 +166,8 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
       guarded(async (actor) => {
         const request = await loadPendingRequest(requestId);
         const action = actionNamed(request.action);
-        requirePermission(actor, action.permission);
+        const row = await loadRow(request.resourceId);
+        requirePermission(actor, action.permissionFor?.(row) ?? action.permission);
         if (request.makerId === actor.id) {
           return fail('You proposed this change; a different user must approve it.');
         }
@@ -170,7 +179,7 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
             resourceId: request.resourceId,
           },
           async (tx) => {
-            const before = await loadRow(request.resourceId);
+            const before = await loadRow(request.resourceId, tx, 'update');
             const after = await action.handler({ tx, row: before, actor });
             await tx
               .update(approvalRequests)
@@ -192,7 +201,8 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
       guarded(async (actor) => {
         const request = await loadPendingRequest(requestId);
         const action = actionNamed(request.action);
-        requirePermission(actor, action.permission);
+        const row = await loadRow(request.resourceId);
+        requirePermission(actor, action.permissionFor?.(row) ?? action.permission);
         if (request.makerId === actor.id) {
           return fail('You proposed this change; a different user must reject it.');
         }

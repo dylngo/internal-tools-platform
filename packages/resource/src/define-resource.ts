@@ -1,5 +1,5 @@
 import type { User } from '@platform/auth';
-import type { Transaction } from '@platform/db';
+import type { ApprovalRequestRow, Transaction } from '@platform/db';
 import type { Permission } from '@platform/rbac';
 import type { AnyObjectSchema, DataTableColumn, SortDirection } from '@platform/ui';
 import type { InferSelectModel } from 'drizzle-orm';
@@ -24,6 +24,11 @@ export interface ResourceAction<Row> {
   requiresApproval?: boolean;
   /** Browser confirm() text shown before the action runs. */
   confirm?: string;
+  input?: {
+    label: string;
+    placeholder?: string;
+    required?: boolean;
+  };
   /** Only show the button when this returns true (e.g. status is not already `closed`). */
   isAvailable?(row: Row): boolean;
   /**
@@ -31,7 +36,12 @@ export interface ResourceAction<Row> {
    * global db, so the change and its audit row commit or roll back together.
    * Returns the row as it looks afterwards (recorded as `after` in the audit log).
    */
-  handler(ctx: { tx: Transaction; row: Row; actor: User }): Promise<Row>;
+  handler(ctx: {
+    tx: Transaction;
+    row: Row;
+    actor: User;
+    approvalRequest?: ApprovalRequestRow;
+  }): Promise<Row>;
 }
 
 export type ResourceColumn<Row> = (keyof Row & string) | DataTableColumn<Row>;
@@ -41,6 +51,7 @@ export interface ResourceFilter {
   label?: string;
   /** Exact-match select when given; otherwise a case-insensitive substring search. */
   options?: readonly string[];
+  kind?: 'text' | 'date';
 }
 
 export interface ResourceConfig<TTable extends ResourceTable, TSchema extends AnyObjectSchema> {
@@ -55,6 +66,7 @@ export interface ResourceConfig<TTable extends ResourceTable, TSchema extends An
   schema: TSchema;
   permissions: { read: Permission; write: Permission };
   create?: boolean;
+  update?: boolean;
   /** Optional row-level write permission, such as production-only controls. */
   writePermission?(row: RowOf<TTable>): Permission;
   /** Adds server-controlled values to generic updates without expanding the form schema. */

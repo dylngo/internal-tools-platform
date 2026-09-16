@@ -45,6 +45,7 @@ export const approvalRequests = pgTable('approval_requests', {
   action: text('action').notNull(),
   makerId: text('maker_id').notNull(),
   makerEmail: text('maker_email').notNull(),
+  reason: text('reason'),
   status: text('status', { enum: APPROVAL_STATUSES }).notNull().default('pending'),
   checkerId: text('checker_id'),
   checkerEmail: text('checker_email'),

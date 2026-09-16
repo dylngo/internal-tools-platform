@@ -6,6 +6,7 @@ import {
   type FLAG_ENVIRONMENTS,
   type FLAG_STATES,
   featureFlags,
+  kycApplications,
   users,
 } from './schema';
 
@@ -255,6 +256,38 @@ export const SEED_FEATURE_FLAGS: (typeof featureFlags.$inferInsert)[] =
     }),
   );
 
+export const SEED_KYC_APPLICATIONS: (typeof kycApplications.$inferInsert)[] = Array.from(
+  { length: 40 },
+  (_, index) => {
+    const number = index + 1;
+    const status =
+      number <= 20
+        ? 'pending'
+        : number <= 28
+          ? 'approved'
+          : number <= 36
+            ? 'rejected'
+            : 'escalated';
+    const riskTier = number % 3 === 0 ? 'high' : number % 2 === 0 ? 'medium' : 'low';
+    return {
+      id: `00000000-0000-4000-8100-${String(number).padStart(12, '0')}`,
+      applicantName: `Synthetic Applicant ${String(number).padStart(2, '0')}`,
+      email: `kyc-applicant-${String(number).padStart(2, '0')}@example.test`,
+      ssn: `000-00-${String(1000 + number).slice(-4)}`,
+      dob: new Date(Date.UTC(1985 + (number % 12), number % 12, 10 + (number % 18))),
+      status,
+      riskTier,
+      submittedAt: new Date(Date.UTC(2026, 7, 1 + number)),
+      rejectionReason:
+        status === 'rejected'
+          ? number % 2 === 0
+            ? 'Synthetic identity details need clarification.'
+            : 'Synthetic document review requires more evidence.'
+          : null,
+    };
+  },
+);
+
 /** A pending maker-checker request so a reviewer can exercise approval right away. */
 const SEED_APPROVAL: typeof approvalRequests.$inferInsert = {
   id: '00000000-0000-4000-9000-000000000001',
@@ -271,6 +304,7 @@ export async function seed(db: Database): Promise<{
   users: number;
   customers: number;
   featureFlags: number;
+  kycApplications: number;
 }> {
   return db.transaction(async (tx) => {
     const insertedUsers = await tx
@@ -305,6 +339,12 @@ export async function seed(db: Database): Promise<{
       );
     }
 
+    const insertedKycApplications = await tx
+      .insert(kycApplications)
+      .values(SEED_KYC_APPLICATIONS)
+      .onConflictDoNothing()
+      .returning();
+
     if (insertedCustomers.length > 0) {
       await tx.insert(auditLog).values(
         insertedCustomers.map((row) => ({
@@ -312,6 +352,20 @@ export async function seed(db: Database): Promise<{
           actorEmail: SYSTEM_ACTOR.email,
           action: 'customer.seeded',
           resourceType: 'customer',
+          resourceId: row.id,
+          before: null,
+          after: row,
+        })),
+      );
+    }
+
+    if (insertedKycApplications.length > 0) {
+      await tx.insert(auditLog).values(
+        insertedKycApplications.map((row) => ({
+          actorId: SYSTEM_ACTOR.id,
+          actorEmail: SYSTEM_ACTOR.email,
+          action: 'kycApplication.seeded',
+          resourceType: 'kycApplication',
           resourceId: row.id,
           before: null,
           after: row,
@@ -341,6 +395,7 @@ export async function seed(db: Database): Promise<{
       users: insertedUsers.length,
       customers: insertedCustomers.length,
       featureFlags: insertedFeatureFlags.length,
+      kycApplications: insertedKycApplications.length,
     };
   });
 }

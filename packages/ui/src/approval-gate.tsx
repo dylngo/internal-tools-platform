@@ -69,6 +69,9 @@ export function ApprovalGate({
                   <p className="text-muted-foreground">
                     Proposed by {request.makerEmail} · {formatValue(request.createdAt)}
                   </p>
+                  {request.reason ? (
+                    <p className="text-muted-foreground">Reason: {request.reason}</p>
+                  ) : null}
                   {request.status !== 'pending' ? (
                     <p className="text-muted-foreground">
                       {request.status === 'approved' ? 'Approved' : 'Rejected'} by{' '}

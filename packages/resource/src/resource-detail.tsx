@@ -102,7 +102,8 @@ export async function ResourceDetail({
             <Link href={resource.basePath} className={buttonClassName('ghost', 'sm')}>
               Back
             </Link>
-            {can(user, resource.writePermission?.(row) ?? resource.permissions.write) ? (
+            {can(user, resource.writePermission?.(row) ?? resource.permissions.write) &&
+            resource.update !== false ? (
               <Link
                 href={`${resource.basePath}/${id}/edit`}
                 className={buttonClassName('outline', 'sm')}
@@ -131,6 +132,7 @@ export async function ResourceDetail({
                   action={actions.run.bind(null, action.name, id)}
                   variant={action.requiresApproval ? 'secondary' : 'default'}
                   confirm={action.confirm}
+                  input={action.input}
                   disabled={!allowed || pending}
                   disabledReason={
                     pending ? 'Already awaiting approval.' : `Requires permission ${needed}.`

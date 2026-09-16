@@ -32,6 +32,7 @@ export interface DataTableFilter {
   label: string;
   /** Renders a select when provided, otherwise a free-text input (matched with ILIKE by the loader). */
   options?: readonly { value: string; label: string }[] | readonly string[];
+  type?: 'text' | 'date';
 }
 
 export interface DataTablePage<Row> {
@@ -141,6 +142,7 @@ export async function DataTable<Row>({
                   <Input
                     id={name}
                     name={name}
+                    type={filter.type ?? 'text'}
                     defaultValue={value}
                     placeholder={`Filter by ${filter.label.toLowerCase()}`}
                     className="w-56"

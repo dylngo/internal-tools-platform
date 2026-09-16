@@ -10,6 +10,8 @@ import { redirect } from 'next/navigation';
 import type { AnyResource, ResourceAction, ResourceTable, RowOf } from './define-resource';
 import { findRow } from './query';
 
+const MAX_ACTION_INPUT_LENGTH = 500;
+
 /**
  * The server actions an app exposes for one resource. Apps re-export these
  * from a `'use server'` file so Next.js can call them from the browser:
@@ -106,6 +108,9 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
         const action = actionNamed(actionName);
         const row = await loadRow(id);
         const actionPermission = action.permissionFor?.(row) ?? action.permission;
+        if (action.isAvailable && !action.isAvailable(row)) {
+          return fail(`"${labelOf(action)}" is not available for this record.`);
+        }
         // Maker-checker: anyone who can write may propose; only `action.permission` may approve.
         requirePermission(
           actor,
@@ -115,6 +120,9 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
         );
         if (action.input?.required && !input?.trim()) {
           return fail(`${action.input.label} is required.`);
+        }
+        if (input && input.length > MAX_ACTION_INPUT_LENGTH) {
+          return fail(`${action.input?.label ?? 'Action input'} must be 500 characters or fewer.`);
         }
 
         if (action.requiresApproval) {
@@ -184,13 +192,10 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
           },
           async (tx) => {
             const before = await loadRow(request.resourceId, tx, 'update');
-            const after = await action.handler({
-              tx,
-              row: before,
-              actor,
-              approvalRequest: request,
-            });
-            await tx
+            if (action.isAvailable && !action.isAvailable(before)) {
+              throw new Error(`"${labelOf(action)}" is not available for this record.`);
+            }
+            const [claimed] = await tx
               .update(approvalRequests)
               .set({
                 status: 'approved',
@@ -198,7 +203,19 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
                 checkerEmail: actor.email,
                 decidedAt: new Date(),
               })
-              .where(eq(approvalRequests.id, request.id));
+              .where(
+                and(eq(approvalRequests.id, request.id), eq(approvalRequests.status, 'pending')),
+              )
+              .returning();
+            if (!claimed) {
+              throw new Error('This request was already decided.');
+            }
+            const after = await action.handler({
+              tx,
+              row: before,
+              actor,
+              approvalRequest: request,
+            });
             return { before, after, result: undefined };
           },
         );
@@ -223,6 +240,10 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
             resourceId: request.resourceId,
           },
           async (tx) => {
+            const before = await loadRow(request.resourceId, tx, 'update');
+            if (action.isAvailable && !action.isAvailable(before)) {
+              throw new Error(`"${labelOf(action)}" is not available for this record.`);
+            }
             const [after] = await tx
               .update(approvalRequests)
               .set({
@@ -231,8 +252,13 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
                 checkerEmail: actor.email,
                 decidedAt: new Date(),
               })
-              .where(eq(approvalRequests.id, request.id))
+              .where(
+                and(eq(approvalRequests.id, request.id), eq(approvalRequests.status, 'pending')),
+              )
               .returning();
+            if (!after) {
+              throw new Error('This request was already decided.');
+            }
             return { before: request, after, result: undefined };
           },
         );

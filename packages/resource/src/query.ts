@@ -1,6 +1,18 @@
 import { type DbExecutor, db } from '@platform/db';
 import type { DataTablePage, DataTableQuery } from '@platform/ui';
-import { and, asc, count, desc, eq, getTableColumns, gte, ilike, lt, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  getTableColumns,
+  gte,
+  ilike,
+  lt,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { AnyResource, ResourceTable, RowOf } from './define-resource';
 
@@ -38,10 +50,16 @@ export async function listRows<R extends AnyResource>(
     const column = columnOf(table, filter.key);
     if (filter.kind === 'date') {
       const start = new Date(`${value}T00:00:00.000Z`);
-      if (!Number.isNaN(start.getTime())) {
+      if (
+        /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+        !Number.isNaN(start.getTime()) &&
+        start.toISOString().slice(0, 10) === value
+      ) {
         const end = new Date(start);
         end.setUTCDate(end.getUTCDate() + 1);
         conditions.push(and(gte(column, start), lt(column, end)) as SQL);
+      } else {
+        conditions.push(sql`false`);
       }
     } else {
       conditions.push(filter.options ? eq(column, value) : ilike(column, `%${value}%`));

@@ -51,7 +51,7 @@ export async function ResourceList({
       <PageHeader
         title={resource.pluralLabel}
         actions={
-          can(user, resource.permissions.write) ? (
+          resource.create !== false && can(user, resource.permissions.write) ? (
             <Link href={`${resource.basePath}/new`} className={buttonClassName('default', 'sm')}>
               New {resource.label.toLowerCase()}
             </Link>

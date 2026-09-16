@@ -79,7 +79,8 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
 
     update: (id, _previous, formData) =>
       guarded(async (actor) => {
-        requirePermission(actor, permissions.write);
+        const before = await loadRow(id);
+        requirePermission(actor, resource.writePermission?.(before) ?? permissions.write);
         const parsed = parseFormData(resource.schema, formData);
         if (!parsed.ok) {
           return fail('Please fix the highlighted fields.', parsed.fieldErrors, parsed.values);
@@ -103,8 +104,15 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
     run: (actionName, id) =>
       guarded(async (actor) => {
         const action = actionNamed(actionName);
+        const row = await loadRow(id);
+        const actionPermission = action.permissionFor?.(row) ?? action.permission;
         // Maker-checker: anyone who can write may propose; only `action.permission` may approve.
-        requirePermission(actor, action.requiresApproval ? permissions.write : action.permission);
+        requirePermission(
+          actor,
+          action.requiresApproval
+            ? (resource.writePermission?.(row) ?? permissions.write)
+            : actionPermission,
+        );
 
         if (action.requiresApproval) {
           const pending = await db
@@ -158,7 +166,8 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
       guarded(async (actor) => {
         const request = await loadPendingRequest(requestId);
         const action = actionNamed(request.action);
-        requirePermission(actor, action.permission);
+        const row = await loadRow(request.resourceId);
+        requirePermission(actor, action.permissionFor?.(row) ?? action.permission);
         if (request.makerId === actor.id) {
           return fail('You proposed this change; a different user must approve it.');
         }

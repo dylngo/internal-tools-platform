@@ -43,12 +43,13 @@ export async function ResourceEdit({
   id: string;
 }) {
   const user = await getCurrentUser();
-  if (!can(user, resource.permissions.write)) {
-    return <Forbidden permission={resource.permissions.write} />;
-  }
   const row = (await findRow(resource, id)) as Record<string, unknown> | undefined;
   if (!row) {
     notFound();
+  }
+  const permission = resource.writePermission?.(row) ?? resource.permissions.write;
+  if (!can(user, permission)) {
+    return <Forbidden permission={permission} />;
   }
   return (
     <div>

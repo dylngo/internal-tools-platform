@@ -23,7 +23,7 @@ export interface ResourceActions {
   create: (previous: ActionResult | null, formData: FormData) => Promise<ActionResult>;
   update: (id: string, previous: ActionResult | null, formData: FormData) => Promise<ActionResult>;
   /** Runs a named action, or queues it for approval when the action `requiresApproval`. */
-  run: (actionName: string, id: string) => Promise<ActionResult>;
+  run: (actionName: string, id: string, input?: string) => Promise<ActionResult>;
   approve: (requestId: string) => Promise<ActionResult>;
   reject: (requestId: string) => Promise<ActionResult>;
   /** Returns a masked field's plaintext after checking the permission and writing an audit row. */
@@ -100,11 +100,14 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
         return { redirectTo: `${basePath}/${id}` };
       }),
 
-    run: (actionName, id) =>
+    run: (actionName, id, input) =>
       guarded(async (actor) => {
         const action = actionNamed(actionName);
         // Maker-checker: anyone who can write may propose; only `action.permission` may approve.
         requirePermission(actor, action.requiresApproval ? permissions.write : action.permission);
+        if (action.input?.required && !input?.trim()) {
+          return fail(`${action.input.label} is required.`);
+        }
 
         if (action.requiresApproval) {
           const pending = await db
@@ -133,6 +136,7 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
                   action: action.name,
                   makerId: actor.id,
                   makerEmail: actor.email,
+                  reason: input?.trim() || null,
                 })
                 .returning();
               return { after: request, result: undefined };
@@ -171,7 +175,12 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
           },
           async (tx) => {
             const before = await loadRow(request.resourceId);
-            const after = await action.handler({ tx, row: before, actor });
+            const after = await action.handler({
+              tx,
+              row: before,
+              actor,
+              approvalRequest: request,
+            });
             await tx
               .update(approvalRequests)
               .set({
@@ -234,7 +243,7 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
         throw error;
       }
       const value = await withAudit(
-        { actor, action: `${name}.reveal.${field}`, resourceType: name, resourceId: id },
+        { actor, action: 'pii.unmask', resourceType: name, resourceId: id },
         async () => {
           const row = (await loadRow(id)) as Record<string, unknown>;
           return { result: String(row[field] ?? '') };

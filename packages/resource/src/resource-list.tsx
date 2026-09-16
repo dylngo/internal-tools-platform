@@ -44,6 +44,7 @@ export async function ResourceList({
     key: filter.key,
     label: filter.label ?? humanize(filter.key),
     options: filter.options,
+    type: filter.kind,
   }));
 
   return (
@@ -51,7 +52,7 @@ export async function ResourceList({
       <PageHeader
         title={resource.pluralLabel}
         actions={
-          can(user, resource.permissions.write) ? (
+          can(user, resource.permissions.write) && resource.create !== false ? (
             <Link href={`${resource.basePath}/new`} className={buttonClassName('default', 'sm')}>
               New {resource.label.toLowerCase()}
             </Link>

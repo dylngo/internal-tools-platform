@@ -22,8 +22,12 @@ export async function updateCustomer(
   return actions.update(id, previous, formData);
 }
 
-export async function runCustomerAction(actionName: string, id: string): Promise<ActionResult> {
-  return actions.run(actionName, id);
+export async function runCustomerAction(
+  actionName: string,
+  id: string,
+  input?: string,
+): Promise<ActionResult> {
+  return actions.run(actionName, id, input);
 }
 
 export async function approveCustomerRequest(requestId: string): Promise<ActionResult> {

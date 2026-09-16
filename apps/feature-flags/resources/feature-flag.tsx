@@ -22,6 +22,7 @@ export const featureFlagResource = defineResource({
   permissions: { read: 'flags:read', write: 'flags:write' },
   create: false,
   writePermission,
+  updateValues: () => ({ updatedAt: new Date() }),
   list: {
     columns: [
       {

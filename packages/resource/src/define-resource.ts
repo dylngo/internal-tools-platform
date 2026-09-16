@@ -57,6 +57,11 @@ export interface ResourceConfig<TTable extends ResourceTable, TSchema extends An
   create?: boolean;
   /** Optional row-level write permission, such as production-only controls. */
   writePermission?(row: RowOf<TTable>): Permission;
+  /** Adds server-controlled values to generic updates without expanding the form schema. */
+  updateValues?(
+    values: Record<string, unknown>,
+    row: RowOf<TTable>,
+  ): Partial<TTable['$inferInsert']>;
   list: {
     columns: ResourceColumn<RowOf<TTable>>[];
     filters?: ResourceFilter[];

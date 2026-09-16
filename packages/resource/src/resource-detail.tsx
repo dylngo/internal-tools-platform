@@ -157,6 +157,7 @@ export async function ResourceDetail({
         requests={requests}
         currentUser={user}
         permissionFor={(request) =>
+          resource.actions.find((action) => action.name === request.action)?.permissionFor?.(row) ??
           resource.actions.find((action) => action.name === request.action)?.permission ??
           resource.permissions.write
         }

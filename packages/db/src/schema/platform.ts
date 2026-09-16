@@ -1,4 +1,5 @@
-import { jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 /**
  * Identities the platform knows about. With the mock auth provider these are the
@@ -38,20 +39,29 @@ export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
  * here instead of executing; a different user with the action's permission
  * approves it, at which point the action runs.
  */
-export const approvalRequests = pgTable('approval_requests', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  resourceType: text('resource_type').notNull(),
-  resourceId: text('resource_id').notNull(),
-  action: text('action').notNull(),
-  makerId: text('maker_id').notNull(),
-  makerEmail: text('maker_email').notNull(),
-  reason: text('reason'),
-  status: text('status', { enum: APPROVAL_STATUSES }).notNull().default('pending'),
-  checkerId: text('checker_id'),
-  checkerEmail: text('checker_email'),
-  decidedAt: timestamp('decided_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const approvalRequests = pgTable(
+  'approval_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    resourceType: text('resource_type').notNull(),
+    resourceId: text('resource_id').notNull(),
+    action: text('action').notNull(),
+    approvalGroup: text('approval_group'),
+    makerId: text('maker_id').notNull(),
+    makerEmail: text('maker_email').notNull(),
+    reason: text('reason'),
+    status: text('status', { enum: APPROVAL_STATUSES }).notNull().default('pending'),
+    checkerId: text('checker_id'),
+    checkerEmail: text('checker_email'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pendingApprovalGroupUnique: uniqueIndex('approval_requests_pending_group_unique')
+      .on(table.resourceType, table.resourceId, table.approvalGroup)
+      .where(sql`${table.status} = 'pending'`),
+  }),
+);
 
 export type UserRow = typeof users.$inferSelect;
 export type AuditLogRow = typeof auditLog.$inferSelect;

@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import type { Database } from './client';
 import {
   approvalRequests,
@@ -7,6 +8,8 @@ import {
   type FLAG_STATES,
   featureFlags,
   kycApplications,
+  type REFUND_STATUSES,
+  refunds,
   users,
 } from './schema';
 
@@ -15,18 +18,22 @@ import {
 
 const SYSTEM_ACTOR = { id: 'system', email: 'seed@example.test' };
 
+function mergeRoles(existing: string[], seeded: string[]): string[] {
+  return [...new Set([...existing, ...seeded])];
+}
+
 export const SEED_USERS: (typeof users.$inferInsert)[] = [
   {
     id: 'usr_ana',
     email: 'ana.analyst@example.test',
     name: 'Ana Analyst',
-    roles: ['template_analyst'],
+    roles: ['template_analyst', 'refunds_analyst'],
   },
   {
     id: 'usr_chris',
     email: 'chris.checker@example.test',
     name: 'Chris Checker',
-    roles: ['template_approver'],
+    roles: ['template_approver', 'refunds_approver'],
   },
   { id: 'usr_kim', email: 'kim.kyc@example.test', name: 'Kim Kyc', roles: ['kyc_analyst'] },
   {
@@ -288,6 +295,40 @@ export const SEED_KYC_APPLICATIONS: (typeof kycApplications.$inferInsert)[] = Ar
   },
 );
 
+const refundId = (n: number): string => `00000000-0000-4000-8200-${String(n).padStart(12, '0')}`;
+
+export const SEED_REFUNDS: (typeof refunds.$inferInsert)[] = Array.from(
+  { length: 40 },
+  (_, index) => {
+    const number = index + 1;
+    const status: (typeof REFUND_STATUSES)[number] =
+      number <= 12
+        ? 'pending'
+        : number <= 20
+          ? 'approved'
+          : number <= 28
+            ? 'rejected'
+            : number <= 36
+              ? 'paid'
+              : 'failed';
+    return {
+      id: refundId(number),
+      customerName: `Synthetic Refund Customer ${String(number).padStart(2, '0')}`,
+      customerEmail: `refund-customer-${String(number).padStart(2, '0')}@example.test`,
+      orderReference: `TEST-ORDER-${String(number).padStart(4, '0')}`,
+      amountCents: 1_000 + number * 275,
+      status,
+      reason:
+        status === 'failed'
+          ? 'Synthetic payment processor failure.'
+          : number % 2 === 0
+            ? 'Synthetic duplicate charge.'
+            : 'Synthetic customer-requested return.',
+      submittedAt: new Date(Date.UTC(2026, 7, 1 + number)),
+    };
+  },
+);
+
 /** A pending maker-checker request so a reviewer can exercise approval right away. */
 const SEED_APPROVAL: typeof approvalRequests.$inferInsert = {
   id: '00000000-0000-4000-9000-000000000001',
@@ -299,12 +340,24 @@ const SEED_APPROVAL: typeof approvalRequests.$inferInsert = {
   status: 'pending',
 };
 
+const SEED_REFUND_APPROVAL: typeof approvalRequests.$inferInsert = {
+  id: '00000000-0000-4000-9000-000000000002',
+  resourceType: 'refund',
+  resourceId: refundId(1),
+  action: 'approve',
+  makerId: 'usr_ana',
+  makerEmail: 'ana.analyst@example.test',
+  approvalGroup: 'status-transition',
+  status: 'pending',
+};
+
 /** Idempotent: rows that already exist are left alone. */
 export async function seed(db: Database): Promise<{
   users: number;
   customers: number;
   featureFlags: number;
   kycApplications: number;
+  refunds: number;
 }> {
   return db.transaction(async (tx) => {
     const insertedUsers = await tx
@@ -312,6 +365,16 @@ export async function seed(db: Database): Promise<{
       .values(SEED_USERS)
       .onConflictDoNothing()
       .returning();
+
+    const existingUsers = await tx.select().from(users);
+    for (const seededUser of SEED_USERS) {
+      const existingUser = existingUsers.find((user) => user.id === seededUser.id);
+      if (!existingUser) continue;
+      const roles = mergeRoles(existingUser.roles ?? [], seededUser.roles ?? []);
+      if (roles.some((role, index) => role !== existingUser.roles[index])) {
+        await tx.update(users).set({ roles }).where(eq(users.id, existingUser.id));
+      }
+    }
 
     const insertedCustomers = await tx
       .insert(customers)
@@ -345,6 +408,12 @@ export async function seed(db: Database): Promise<{
       .onConflictDoNothing()
       .returning();
 
+    const insertedRefunds = await tx
+      .insert(refunds)
+      .values(SEED_REFUNDS)
+      .onConflictDoNothing()
+      .returning();
+
     if (insertedCustomers.length > 0) {
       await tx.insert(auditLog).values(
         insertedCustomers.map((row) => ({
@@ -373,6 +442,20 @@ export async function seed(db: Database): Promise<{
       );
     }
 
+    if (insertedRefunds.length > 0) {
+      await tx.insert(auditLog).values(
+        insertedRefunds.map((row) => ({
+          actorId: SYSTEM_ACTOR.id,
+          actorEmail: SYSTEM_ACTOR.email,
+          action: 'refund.seeded',
+          resourceType: 'refund',
+          resourceId: row.id,
+          before: null,
+          after: row,
+        })),
+      );
+    }
+
     const insertedApprovals = await tx
       .insert(approvalRequests)
       .values(SEED_APPROVAL)
@@ -391,11 +474,30 @@ export async function seed(db: Database): Promise<{
       });
     }
 
+    const insertedRefundApprovals = await tx
+      .insert(approvalRequests)
+      .values(SEED_REFUND_APPROVAL)
+      .onConflictDoNothing()
+      .returning();
+
+    if (insertedRefundApprovals.length > 0) {
+      await tx.insert(auditLog).values({
+        actorId: SEED_REFUND_APPROVAL.makerId,
+        actorEmail: SEED_REFUND_APPROVAL.makerEmail,
+        action: 'refund.approve.propose',
+        resourceType: 'refund',
+        resourceId: SEED_REFUND_APPROVAL.resourceId,
+        before: null,
+        after: { approvalRequestId: SEED_REFUND_APPROVAL.id },
+      });
+    }
+
     return {
       users: insertedUsers.length,
       customers: insertedCustomers.length,
       featureFlags: insertedFeatureFlags.length,
       kycApplications: insertedKycApplications.length,
+      refunds: insertedRefunds.length,
     };
   });
 }

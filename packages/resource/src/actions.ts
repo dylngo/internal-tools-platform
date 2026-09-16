@@ -1,10 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { withAudit } from '@platform/audit';
 import { getCurrentUser, type User } from '@platform/auth';
-import { type ApprovalRequestRow, approvalRequests, type DbExecutor, db } from '@platform/db';
+import {
+  type ApprovalRequestRow,
+  approvalRequests,
+  auditLog,
+  type DbExecutor,
+  db,
+} from '@platform/db';
 import { isForbiddenError, requirePermission } from '@platform/rbac';
 import { type ActionResult, fail, ok, parseFormData, type RevealResult } from '@platform/ui';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, ne, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { AnyResource, ResourceAction, ResourceTable, RowOf } from './define-resource';
@@ -106,6 +112,7 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
     run: (actionName, id, input) =>
       guarded(async (actor) => {
         const action = actionNamed(actionName);
+        const approvalGroup = action.approvalGroup ?? action.name;
         const row = await loadRow(id);
         const actionPermission = action.permissionFor?.(row) ?? action.permission;
         if (action.isAvailable && !action.isAvailable(row)) {
@@ -133,7 +140,13 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
               and(
                 eq(approvalRequests.resourceType, name),
                 eq(approvalRequests.resourceId, id),
-                eq(approvalRequests.action, action.name),
+                or(
+                  eq(approvalRequests.approvalGroup, approvalGroup),
+                  and(
+                    isNull(approvalRequests.approvalGroup),
+                    eq(approvalRequests.action, action.name),
+                  ),
+                ),
                 eq(approvalRequests.status, 'pending'),
               ),
             )
@@ -141,23 +154,36 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
           if (pending.length > 0) {
             return fail(`"${labelOf(action)}" is already awaiting approval.`);
           }
-          await withAudit(
-            { actor, action: `${name}.${action.name}.propose`, resourceType: name, resourceId: id },
-            async (tx) => {
-              const [request] = await tx
-                .insert(approvalRequests)
-                .values({
-                  resourceType: name,
-                  resourceId: id,
-                  action: action.name,
-                  makerId: actor.id,
-                  makerEmail: actor.email,
-                  reason: input?.trim() || null,
-                })
-                .returning();
-              return { after: request, result: undefined };
-            },
-          );
+          try {
+            await withAudit(
+              {
+                actor,
+                action: `${name}.${action.name}.propose`,
+                resourceType: name,
+                resourceId: id,
+              },
+              async (tx) => {
+                const [request] = await tx
+                  .insert(approvalRequests)
+                  .values({
+                    resourceType: name,
+                    resourceId: id,
+                    action: action.name,
+                    approvalGroup,
+                    makerId: actor.id,
+                    makerEmail: actor.email,
+                    reason: input?.trim() || null,
+                  })
+                  .returning();
+                return { after: request, result: undefined };
+              },
+            );
+          } catch (error) {
+            if (isUniqueViolation(error)) {
+              return fail(`"${labelOf(action)}" is already awaiting approval.`);
+            }
+            throw error;
+          }
           refresh(id);
           return ok(`"${labelOf(action)}" proposed. A different user must approve it.`);
         }
@@ -216,6 +242,39 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
               actor,
               approvalRequest: request,
             });
+            const canceled = await tx
+              .update(approvalRequests)
+              .set({
+                status: 'rejected',
+                checkerId: actor.id,
+                checkerEmail: actor.email,
+                decidedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(approvalRequests.resourceType, name),
+                  eq(approvalRequests.resourceId, request.resourceId),
+                  request.approvalGroup
+                    ? eq(approvalRequests.approvalGroup, request.approvalGroup)
+                    : isNull(approvalRequests.approvalGroup),
+                  ne(approvalRequests.id, request.id),
+                  eq(approvalRequests.status, 'pending'),
+                ),
+              )
+              .returning();
+            if (canceled.length > 0) {
+              await tx.insert(auditLog).values(
+                canceled.map((canceledRequest) => ({
+                  actorId: actor.id,
+                  actorEmail: actor.email,
+                  action: `${name}.${canceledRequest.action}.cancel`,
+                  resourceType: name,
+                  resourceId: request.resourceId,
+                  before: { ...canceledRequest, status: 'pending' },
+                  after: canceledRequest,
+                })),
+              );
+            }
             return { before, after, result: undefined };
           },
         );
@@ -337,4 +396,12 @@ async function guarded(body: (actor: User) => Promise<GuardedResult>): Promise<A
 
 function labelOf(action: { name: string; label?: string }): string {
   return action.label ?? action.name;
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    (error as Error & { code?: string }).code === '23505'
+  );
 }

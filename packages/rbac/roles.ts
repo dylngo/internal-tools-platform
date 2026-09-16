@@ -8,6 +8,8 @@ export const ROLES = {
   kyc_approver: ['kyc:read', 'kyc:propose', 'kyc:approve', 'kyc:view_pii'],
   flags_engineer: ['flags:read', 'flags:write'],
   flags_admin: ['flags:read', 'flags:write', 'flags:write_prod'],
+  refunds_analyst: ['refunds:read', 'refunds:propose'],
+  refunds_approver: ['refunds:read', 'refunds:propose', 'refunds:approve', 'refunds:view_pii'],
   auditor: ['audit:read'],
   // apps/_template. Rename `template` to the new app's domain when copying it.
   template_analyst: ['template:read', 'template:write'],

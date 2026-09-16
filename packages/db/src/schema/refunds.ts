@@ -10,6 +10,7 @@ export const refunds = pgTable('refunds', {
   amountCents: integer('amount_cents').notNull(),
   status: text('status', { enum: REFUND_STATUSES }).notNull().default('pending'),
   reason: text('reason').notNull(),
+  rejectionReason: text('rejection_reason'),
   submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

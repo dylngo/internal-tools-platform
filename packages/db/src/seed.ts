@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import type { Database } from './client';
 import {
   approvalRequests,
@@ -16,6 +17,10 @@ import {
 // emails at @example.test. Never add realistic PII, even fictional.
 
 const SYSTEM_ACTOR = { id: 'system', email: 'seed@example.test' };
+
+function mergeRoles(existing: string[], seeded: string[]): string[] {
+  return [...new Set([...existing, ...seeded])];
+}
 
 export const SEED_USERS: (typeof users.$inferInsert)[] = [
   {
@@ -342,6 +347,7 @@ const SEED_REFUND_APPROVAL: typeof approvalRequests.$inferInsert = {
   action: 'approve',
   makerId: 'usr_ana',
   makerEmail: 'ana.analyst@example.test',
+  approvalGroup: 'status-transition',
   status: 'pending',
 };
 
@@ -359,6 +365,16 @@ export async function seed(db: Database): Promise<{
       .values(SEED_USERS)
       .onConflictDoNothing()
       .returning();
+
+    const existingUsers = await tx.select().from(users);
+    for (const seededUser of SEED_USERS) {
+      const existingUser = existingUsers.find((user) => user.id === seededUser.id);
+      if (!existingUser) continue;
+      const roles = mergeRoles(existingUser.roles ?? [], seededUser.roles ?? []);
+      if (roles.some((role, index) => role !== existingUser.roles[index])) {
+        await tx.update(users).set({ roles }).where(eq(users.id, existingUser.id));
+      }
+    }
 
     const insertedCustomers = await tx
       .insert(customers)

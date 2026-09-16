@@ -22,6 +22,8 @@ export interface ResourceAction<Row> {
    * action; it runs only once a *different* user holding `permission` approves.
    */
   requiresApproval?: boolean;
+  /** Groups mutually exclusive approval requests for the same resource. */
+  approvalGroup?: string;
   /** Browser confirm() text shown before the action runs. */
   confirm?: string;
   input?: {

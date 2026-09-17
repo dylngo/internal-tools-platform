@@ -90,7 +90,7 @@ function queryHref(query: DataTableQuery, overrides: Partial<DataTableQuery>): s
 export async function DataTable<Row>({
   columns,
   filters = [],
-  query,
+  query: requested,
   loader,
   rowKey,
   rowHref,
@@ -105,8 +105,11 @@ export async function DataTable<Row>({
   rowHref?: (row: Row) => string;
   emptyMessage?: string;
 }) {
-  const { rows, total } = await loader(query);
-  const pageCount = Math.max(1, Math.ceil(total / query.pageSize));
+  const first = await loader(requested);
+  const pageCount = Math.max(1, Math.ceil(first.total / requested.pageSize));
+  // A stale or hand-typed page past the end shows the last page instead of an empty one.
+  const query = requested.page > pageCount ? { ...requested, page: pageCount } : requested;
+  const { rows, total } = query === requested ? first : await loader(query);
   const from = total === 0 ? 0 : (query.page - 1) * query.pageSize + 1;
   const to = Math.min(total, query.page * query.pageSize);
   const hasActiveFilters = Object.keys(query.filters).length > 0;
@@ -114,7 +117,11 @@ export async function DataTable<Row>({
   return (
     <div className="space-y-4">
       {filters.length > 0 ? (
-        <form method="get" className="flex flex-wrap items-end gap-3">
+        <form
+          key={JSON.stringify(query.filters)}
+          method="get"
+          className="flex flex-wrap items-end gap-3"
+        >
           <input type="hidden" name={PARAM.sort} value={query.sort} />
           <input type="hidden" name={PARAM.direction} value={query.direction} />
           {filters.map((filter) => {

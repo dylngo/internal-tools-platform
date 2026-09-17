@@ -14,6 +14,7 @@ import { and, eq, isNull, ne, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { AnyResource, ResourceAction, ResourceTable, RowOf } from './define-resource';
+import { editSchema } from './edit-schema';
 import { findRow } from './query';
 
 const MAX_ACTION_INPUT_LENGTH = 500;
@@ -89,7 +90,7 @@ export function createResourceActions(resource: AnyResource): ResourceActions {
       guarded(async (actor) => {
         const before = await loadRow(id);
         requirePermission(actor, resource.writePermission?.(before) ?? permissions.write);
-        const parsed = parseFormData(resource.schema, formData);
+        const parsed = parseFormData(editSchema(resource), formData);
         if (!parsed.ok) {
           return fail('Please fix the highlighted fields.', parsed.fieldErrors, parsed.values);
         }

@@ -148,6 +148,11 @@ Given a resource, the platform provides `<ResourceList resource={...} />` and
 `<ResourceDetail resource={...} />`. Actions render as buttons, are permission-gated,
 route through `withAudit`, and route through `ApprovalGate` when `requiresApproval`.
 
+The generated edit form only covers `editableFields`: schema fields minus
+`form.createOnly` and anything in `detail.masked`. State that must move through an
+action (e.g. `status`) belongs in `createOnly`, so a free edit can never bypass
+maker-checker, and a masked value is never rendered into a form.
+
 This layer is the point of the whole platform. When adding an app, the work should
 be writing a resource definition — not writing tables, forms, or handlers.
 

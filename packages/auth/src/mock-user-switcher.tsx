@@ -1,3 +1,4 @@
+import { signOut, switchMockUser } from './actions';
 import { MockUserSwitcherSelect } from './mock-user-switcher-select';
 import { getAuthProviderName, getCurrentUser, getMockAuthProvider } from './provider';
 
@@ -10,5 +11,12 @@ export async function MockUserSwitcher() {
     return null;
   }
   const [users, current] = await Promise.all([getMockAuthProvider().listUsers(), getCurrentUser()]);
-  return <MockUserSwitcherSelect users={users} currentUserId={current?.id ?? null} />;
+  return (
+    <MockUserSwitcherSelect
+      users={users}
+      currentUserId={current?.id ?? null}
+      onSwitchUser={switchMockUser}
+      onSignOut={signOut}
+    />
+  );
 }

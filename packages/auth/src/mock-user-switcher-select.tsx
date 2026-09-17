@@ -1,15 +1,18 @@
 'use client';
 
 import { useTransition } from 'react';
-import { signOut, switchMockUser } from './actions';
 import type { User } from './types';
 
 export function MockUserSwitcherSelect({
   users,
   currentUserId,
+  onSwitchUser,
+  onSignOut,
 }: {
   users: User[];
   currentUserId: string | null;
+  onSwitchUser: (userId: string) => Promise<void>;
+  onSignOut: () => Promise<void>;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -24,7 +27,7 @@ export function MockUserSwitcherSelect({
         disabled={pending}
         onChange={(event) => {
           const id = event.target.value;
-          startTransition(() => (id ? switchMockUser(id) : signOut()));
+          startTransition(() => (id ? onSwitchUser(id) : onSignOut()));
         }}
       >
         <option value="">Signed out</option>

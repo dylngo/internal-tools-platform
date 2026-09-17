@@ -49,6 +49,9 @@ export const customerResource = defineResource({
   table: customers,
   schema: customerSchema,
   permissions: { read: 'template:read', write: 'template:write' },
+  // Status changes go through the suspend/reactivate/close actions below, not the edit form.
+  form: { createOnly: ['status'] },
+  updateValues: () => ({ updatedAt: new Date() }),
   list: {
     columns: [
       'fullName',

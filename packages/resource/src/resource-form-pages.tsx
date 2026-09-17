@@ -4,6 +4,7 @@ import { PageHeader, ResourceForm } from '@platform/ui';
 import { notFound } from 'next/navigation';
 import type { ResourceActions } from './actions';
 import type { AnyResource } from './define-resource';
+import { editSchema } from './edit-schema';
 import { Forbidden } from './forbidden';
 import { findRow } from './query';
 
@@ -55,7 +56,7 @@ export async function ResourceEdit({
     <div>
       <PageHeader title={`Edit ${resource.label.toLowerCase()}`} description={id} />
       <ResourceForm
-        schema={resource.schema}
+        schema={editSchema(resource)}
         action={actions.update.bind(null, id)}
         defaultValues={row}
         submitLabel="Save changes"

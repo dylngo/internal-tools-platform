@@ -25,7 +25,7 @@ export function ResourceFormClient({
   const values = state && !state.ok && state.values ? state.values : defaultValues;
 
   return (
-    <form action={formAction} className="max-w-xl space-y-5">
+    <form key={JSON.stringify(values)} action={formAction} className="max-w-xl space-y-5">
       {state && !state.ok && !state.fieldErrors ? (
         <Alert variant="destructive">{state.error}</Alert>
       ) : null}

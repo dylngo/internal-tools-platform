@@ -4,6 +4,7 @@ import type { Permission } from '@platform/rbac';
 import type { AnyObjectSchema, DataTableColumn, SortDirection } from '@platform/ui';
 import type { InferSelectModel } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
+import type { z } from 'zod';
 
 /** Any Drizzle table with an `id` primary key — the only structural requirement. */
 export type ResourceTable = PgTable & { id: PgColumn };
@@ -64,11 +65,20 @@ export interface ResourceConfig<TTable extends ResourceTable, TSchema extends An
   /** Route prefix for the generated pages, e.g. `/customers`. */
   basePath: string;
   table: TTable;
-  /** Editable fields. Anything not in the schema (id, timestamps) is never accepted from a form. */
+  /** Form fields. Anything not in the schema (id, timestamps) is never accepted from a form. */
   schema: TSchema;
   permissions: { read: Permission; write: Permission };
   create?: boolean;
   update?: boolean;
+  form?: {
+    /**
+     * Schema fields accepted on create only; the edit form neither shows nor
+     * accepts them. Use this for state like `status` that must change through
+     * (approval-gated) actions rather than a free edit. Masked fields are
+     * always create-only so their plaintext never reaches an edit form.
+     */
+    createOnly?: (keyof z.output<TSchema> & string)[];
+  };
   /** Optional row-level write permission, such as production-only controls. */
   writePermission?(row: RowOf<TTable>): Permission;
   /** Adds server-controlled values to generic updates without expanding the form schema. */
@@ -99,6 +109,8 @@ export interface Resource<TTable extends ResourceTable, TSchema extends AnyObjec
   label: string;
   pluralLabel: string;
   actions: ResourceAction<RowOf<TTable>>[];
+  /** Schema keys the edit form renders and the update action accepts. */
+  editableFields: string[];
 }
 
 /**
@@ -112,11 +124,16 @@ export function defineResource<TTable extends ResourceTable, TSchema extends Any
   config: ResourceConfig<TTable, TSchema>,
 ): Resource<TTable, TSchema> {
   const label = config.label ?? capitalize(config.name);
+  const createOnly = new Set<string>([
+    ...(config.form?.createOnly ?? []),
+    ...(config.detail?.masked ?? []).map((entry) => entry.field),
+  ]);
   return {
     ...config,
     label,
     pluralLabel: config.pluralLabel ?? `${label}s`,
     actions: config.actions ?? [],
+    editableFields: Object.keys(config.schema.shape).filter((key) => !createOnly.has(key)),
   };
 }
 
